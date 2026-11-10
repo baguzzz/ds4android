@@ -81,8 +81,8 @@ public class MainActivity extends AppCompatActivity {
         setupButton(R.id.btnB, BTN_CIRCLE);
         setupButton(R.id.btnX, BTN_SQUARE);
         setupButton(R.id.btnY, BTN_TRIANGLE);
-        setupButton(R.id.btnLB, BTN_L1);
-        setupButton(R.id.btnRB, BTN_R1);
+        setupButton(R.id.btnL1, BTN_L1);
+        setupButton(R.id.btnR1, BTN_R1);
         setupButton(R.id.btnShare, BTN_SHARE);
         setupButton(R.id.btnOptions, BTN_OPTIONS);
         setupButton(R.id.btnL3, BTN_L3);
