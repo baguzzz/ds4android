@@ -1,12 +1,17 @@
 package com.example.ds4remote;
 
+import android.content.Context;
+import android.content.SharedPreferences;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.MotionEvent;
+import android.view.ScaleGestureDetector;
 import android.view.View;
+import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -22,16 +27,21 @@ public class MainActivity extends AppCompatActivity {
 
     private static final byte SYNC = (byte) 0xAA;
     private static final int PACKET_SIZE = 12;
-    private static final int SEND_INTERVAL_MS = 16; // 60Hz
+    private static final int SEND_INTERVAL_MS = 16;
 
     private TextView statusText;
     private EditText ipInput;
-    private Button connectBtn;
+    private Button connectBtn, editLayoutBtn;
+    private FrameLayout gamepadArea;
 
     private Socket socket;
     private OutputStream output;
     private final AtomicBoolean connected = new AtomicBoolean(false);
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
+
+    // Mode Edit Layout
+    private boolean isEditMode = false;
+    private SharedPreferences prefs;
 
     // State
     private volatile int buttons = 0;
@@ -39,42 +49,37 @@ public class MainActivity extends AppCompatActivity {
     private volatile int l2 = 0, r2 = 0;
     private volatile int dpad = 8;
 
-    // Button bit indices
-    private static final int BTN_CROSS    = 0;
-    private static final int BTN_CIRCLE   = 1;
-    private static final int BTN_SQUARE   = 2;
-    private static final int BTN_TRIANGLE = 3;
-    private static final int BTN_L1       = 4;
-    private static final int BTN_R1       = 5;
-    private static final int BTN_SHARE    = 6;
-    private static final int BTN_OPTIONS  = 7;
-    private static final int BTN_L3       = 8;
-    private static final int BTN_R3       = 9;
-    private static final int BTN_PS       = 10;
-    private static final int BTN_TOUCHPAD = 11;
+    private static final int BTN_CROSS=0, BTN_CIRCLE=1, BTN_SQUARE=2, BTN_TRIANGLE=3, BTN_L1=4, BTN_R1=5,
+            BTN_SHARE=6, BTN_OPTIONS=7, BTN_L3=8, BTN_R3=9, BTN_PS=10, BTN_TOUCHPAD=11;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
 
+        prefs = getSharedPreferences("GamepadLayout", Context.MODE_PRIVATE);
+
         statusText = findViewById(R.id.status);
         ipInput = findViewById(R.id.ipInput);
         connectBtn = findViewById(R.id.connectBtn);
+        editLayoutBtn = findViewById(R.id.editLayoutBtn);
+        gamepadArea = findViewById(R.id.gamepadArea);
 
         JoystickView leftStick = findViewById(R.id.leftStick);
         JoystickView rightStick = findViewById(R.id.rightStick);
 
         leftStick.setOnMoveListener((x, y) -> {
+            if (isEditMode) return;
             lx = clamp255((x + 1f) / 2f * 255f);
             ly = clamp255((y + 1f) / 2f * 255f);
         });
         rightStick.setOnMoveListener((x, y) -> {
+            if (isEditMode) return;
             rx = clamp255((x + 1f) / 2f * 255f);
             ry = clamp255((y + 1f) / 2f * 255f);
         });
 
-        // Setup Buttons
+        // Setup Button & Touch Listeners (Normal & Edit Mode)
         setupButton(R.id.btnA, BTN_CROSS);
         setupButton(R.id.btnB, BTN_CIRCLE);
         setupButton(R.id.btnX, BTN_SQUARE);
@@ -91,39 +96,121 @@ public class MainActivity extends AppCompatActivity {
         setupTrigger(R.id.btnL2, true);
         setupTrigger(R.id.btnR2, false);
 
-        setupDpad(R.id.dpadUp,    0);
+        setupDpad(R.id.dpadUp, 0);
         setupDpad(R.id.dpadRight, 2);
-        setupDpad(R.id.dpadDown,  4);
-        setupDpad(R.id.dpadLeft,  6);
-        setupDpadCenter();
+        setupDpad(R.id.dpadDown, 4);
+        setupDpad(R.id.dpadLeft, 6);
 
-        connectBtn.setOnClickListener(v -> {
-            if (connected.get()) {
-                disconnect();
+        // Tombol Toggle Edit Mode
+        editLayoutBtn.setOnClickListener(v -> {
+            isEditMode = !isEditMode;
+            if (isEditMode) {
+                editLayoutBtn.setText("💾 Simpan");
+                editLayoutBtn.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xFF4CAF50));
+                statusText.setText("MODE EDIT: Geser tombol, Cubit (Pinch) untuk ubah ukuran");
+                Toast.makeText(this, "Mode Edit Aktif", Toast.LENGTH_SHORT).show();
             } else {
-                connect(ipInput.getText().toString().trim());
+                editLayoutBtn.setText("⚙️ Edit");
+                editLayoutBtn.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xFFFF9800));
+                statusText.setText("Tata letak disimpan!");
+                saveLayout();
             }
         });
 
-        // Mulai pengiriman data di background thread terpisah
+        connectBtn.setOnClickListener(v -> {
+            if (connected.get()) disconnect();
+            else connect(ipInput.getText().toString().trim());
+        });
+
+        // Muat layout yang tersimpan saat aplikasi dibuka
+        loadLayout();
         startSendLoop();
     }
 
+    // ================= LAYOUT EDITOR =================
+    private void applyEditTouch(View view) {
+        final ScaleGestureDetector scaleDetector = new ScaleGestureDetector(this, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            @Override
+            public boolean onScale(ScaleGestureDetector detector) {
+                if (!isEditMode) return false;
+                float scale = detector.getScaleFactor();
+                ViewGroup.LayoutParams params = view.getLayoutParams();
+                params.width = (int) Math.max(40, params.width * scale);
+                params.height = (int) Math.max(40, params.height * scale);
+                view.setLayoutParams(params);
+                return true;
+            }
+        });
+
+        view.setOnTouchListener((v, event) -> {
+            scaleDetector.onTouchEvent(event);
+
+            if (!isEditMode) {
+                // Jika tidak dalam mode edit, teruskan event ke fungsi normal
+                return false; 
+            }
+
+            switch (event.getActionMasked()) {
+                case MotionEvent.ACTION_DOWN:
+                    return true;
+                case MotionEvent.ACTION_MOVE:
+                    if (!scaleDetector.isInProgress()) {
+                        v.setX(v.getX() + event.getX() - (v.getWidth() / 2f));
+                        v.setY(v.getY() + event.getY() - (v.getHeight() / 2f));
+                    }
+                    return true;
+            }
+            return false;
+        });
+    }
+
+    private void saveLayout() {
+        SharedPreferences.Editor editor = prefs.edit();
+        for (int i = 0; i < gamepadArea.getChildCount(); i++) {
+            View child = gamepadArea.getChildAt(i);
+            if (child.getId() != View.NO_ID) {
+                String idName = getResources().getResourceEntryName(child.getId());
+                editor.putFloat(idName + "_x", child.getX());
+                editor.putFloat(idName + "_y", child.getY());
+                editor.putInt(idName + "_w", child.getWidth());
+                editor.putInt(idName + "_h", child.getHeight());
+            }
+        }
+        editor.apply();
+    }
+
+    private void loadLayout() {
+        for (int i = 0; i < gamepadArea.getChildCount(); i++) {
+            View child = gamepadArea.getChildAt(i);
+            if (child.getId() != View.NO_ID) {
+                String idName = getResources().getResourceEntryName(child.getId());
+                if (prefs.contains(idName + "_x")) {
+                    child.setX(prefs.getFloat(idName + "_x", 0));
+                    child.setY(prefs.getFloat(idName + "_y", 0));
+                    ViewGroup.LayoutParams params = child.getLayoutParams();
+                    params.width = prefs.getInt(idName + "_w", params.width);
+                    params.height = prefs.getInt(idName + "_h", params.height);
+                    child.setLayoutParams(params);
+                }
+                // Daftarkan fitur geser & cubit ke setiap tombol
+                applyEditTouch(child);
+            }
+        }
+    }
+
+    // ================= INPUT HANDLERS =================
     private static int clamp255(float v) {
-        if (v < 0) return 0;
-        if (v > 255) return 255;
-        return (int) v;
+        return (int) Math.max(0, Math.min(255, v));
     }
 
     private void setupButton(int id, int bitIdx) {
         Button b = findViewById(id);
         b.setOnTouchListener((v, e) -> {
+            if (isEditMode) return false; // Biarkan mode edit yang mengambil alih
             switch (e.getActionMasked()) {
-                case MotionEvent.ACTION_DOWN:
-                    buttons |= (1 << bitIdx); return true;
+                case MotionEvent.ACTION_DOWN: buttons |= (1 << bitIdx); return true;
                 case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL:
-                    buttons &= ~(1 << bitIdx); return true;
+                case MotionEvent.ACTION_CANCEL: buttons &= ~(1 << bitIdx); return true;
             }
             return false;
         });
@@ -132,12 +219,11 @@ public class MainActivity extends AppCompatActivity {
     private void setupTrigger(int id, boolean isL2) {
         Button b = findViewById(id);
         b.setOnTouchListener((v, e) -> {
+            if (isEditMode) return false;
             switch (e.getActionMasked()) {
-                case MotionEvent.ACTION_DOWN:
-                    if (isL2) l2 = 255; else r2 = 255; return true;
+                case MotionEvent.ACTION_DOWN: if (isL2) l2 = 255; else r2 = 255; return true;
                 case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL:
-                    if (isL2) l2 = 0; else r2 = 0; return true;
+                case MotionEvent.ACTION_CANCEL: if (isL2) l2 = 0; else r2 = 0; return true;
             }
             return false;
         });
@@ -146,8 +232,9 @@ public class MainActivity extends AppCompatActivity {
     private void setupDpad(int id, int dpadValue) {
         View b = findViewById(id);
         b.setOnTouchListener((v, e) -> {
+            if (isEditMode) return false;
             switch (e.getActionMasked()) {
-                case MotionEvent.ACTION_DOWN:  dpad = dpadValue; return true;
+                case MotionEvent.ACTION_DOWN: dpad = dpadValue; return true;
                 case MotionEvent.ACTION_UP:
                 case MotionEvent.ACTION_CANCEL: dpad = 8; return true;
             }
@@ -155,21 +242,10 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    private void setupDpadCenter() {
-        View b = findViewById(R.id.dpadCenter);
-        b.setOnClickListener(v -> { /* no-op */ });
-    }
-
-    // --- PERBAIKAN: Gunakan Thread baru untuk koneksi agar tidak macet ---
+    // ================= NETWORKING (TCP) =================
     private void connect(String ip) {
-        if (ip.isEmpty()) {
-            Toast.makeText(this, "Masukkan IP PC dulu", Toast.LENGTH_SHORT).show();
-            return;
-        }
-
-        // Tampilkan indikator sedang menghubungkan
-        statusText.setText("⏳ Menghubungkan ke " + ip + "...");
-        connectBtn.setText("Connecting...");
+        if (ip.isEmpty()) { Toast.makeText(this, "Masukkan IP PC", Toast.LENGTH_SHORT).show(); return; }
+        statusText.setText("⏳ Menghubungkan...");
         connectBtn.setEnabled(false);
 
         new Thread(() -> {
@@ -177,11 +253,9 @@ public class MainActivity extends AppCompatActivity {
                 Socket newSocket = new Socket();
                 newSocket.connect(new InetSocketAddress(ip, 27020), 3000);
                 newSocket.setTcpNoDelay(true);
-                
                 socket = newSocket;
                 output = socket.getOutputStream();
                 connected.set(true);
-                
                 uiHandler.post(() -> {
                     statusText.setText("✅ Terhubung ke " + ip);
                     connectBtn.setText("Disconnect");
@@ -193,8 +267,6 @@ public class MainActivity extends AppCompatActivity {
                     statusText.setText("❌ Gagal: " + errMsg);
                     connectBtn.setText("Connect");
                     connectBtn.setEnabled(true);
-                    Toast.makeText(MainActivity.this, "Gagal connect: " + errMsg,
-                            Toast.LENGTH_LONG).show();
                 });
             }
         }).start();
@@ -203,8 +275,7 @@ public class MainActivity extends AppCompatActivity {
     private void disconnect() {
         connected.set(false);
         try { if (socket != null) socket.close(); } catch (IOException ignored) {}
-        socket = null;
-        output = null;
+        socket = null; output = null;
         runOnUiThread(() -> {
             statusText.setText("Terputus");
             connectBtn.setText("Connect");
@@ -212,19 +283,13 @@ public class MainActivity extends AppCompatActivity {
         });
     }
 
-    // --- PERBAIKAN: Gunakan Thread baru untuk looping pengiriman data ---
     private void startSendLoop() {
         new Thread(() -> {
             while (!Thread.interrupted()) {
                 if (connected.get()) {
-                    try {
-                        sendPacket();
-                    } catch (IOException ex) {
-                        disconnect();
-                    }
+                    try { sendPacket(); } catch (IOException ex) { disconnect(); }
                 }
-                try { Thread.sleep(SEND_INTERVAL_MS); }
-                catch (InterruptedException e) { return; }
+                try { Thread.sleep(SEND_INTERVAL_MS); } catch (InterruptedException e) { return; }
             }
         }).start();
     }
@@ -232,17 +297,13 @@ public class MainActivity extends AppCompatActivity {
     private void sendPacket() throws IOException {
         OutputStream out = this.output;
         if (out == null) return;
-        
         byte[] p = new byte[PACKET_SIZE];
         p[0] = SYNC;
         p[1] = (byte)(buttons & 0xFF);
         p[2] = (byte)((buttons >> 8) & 0xFF);
-        p[3] = (byte) lx;
-        p[4] = (byte) ly;
-        p[5] = (byte) rx;
-        p[6] = (byte) ry;
-        p[7] = (byte) l2;
-        p[8] = (byte) r2;
+        p[3] = (byte) lx; p[4] = (byte) ly;
+        p[5] = (byte) rx; p[6] = (byte) ry;
+        p[7] = (byte) l2; p[8] = (byte) r2;
         p[9] = (byte) dpad;
         p[10] = 0;
         byte ck = 0;
