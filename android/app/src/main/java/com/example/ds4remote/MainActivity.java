@@ -16,8 +16,6 @@ import java.io.IOException;
 import java.io.OutputStream;
 import java.net.InetSocketAddress;
 import java.net.Socket;
-import java.util.concurrent.ExecutorService;
-import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MainActivity extends AppCompatActivity {
@@ -33,16 +31,15 @@ public class MainActivity extends AppCompatActivity {
     private Socket socket;
     private OutputStream output;
     private final AtomicBoolean connected = new AtomicBoolean(false);
-    private final ExecutorService netExec = Executors.newSingleThreadExecutor();
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
 
     // State
-    private volatile int buttons = 0; // 12-bit bitmask
+    private volatile int buttons = 0;
     private volatile int lx = 128, ly = 128, rx = 128, ry = 128;
     private volatile int l2 = 0, r2 = 0;
     private volatile int dpad = 8;
 
-    // Button bit indices (samakan dengan Program.cs PC)
+    // Button bit indices
     private static final int BTN_CROSS    = 0;
     private static final int BTN_CIRCLE   = 1;
     private static final int BTN_SQUARE   = 2;
@@ -77,6 +74,7 @@ public class MainActivity extends AppCompatActivity {
             ry = clamp255((y + 1f) / 2f * 255f);
         });
 
+        // Setup Buttons
         setupButton(R.id.btnA, BTN_CROSS);
         setupButton(R.id.btnB, BTN_CIRCLE);
         setupButton(R.id.btnX, BTN_SQUARE);
@@ -107,6 +105,7 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
+        // Mulai pengiriman data di background thread terpisah
         startSendLoop();
     }
 
@@ -161,30 +160,44 @@ public class MainActivity extends AppCompatActivity {
         b.setOnClickListener(v -> { /* no-op */ });
     }
 
+    // --- PERBAIKAN: Gunakan Thread baru untuk koneksi agar tidak macet ---
     private void connect(String ip) {
         if (ip.isEmpty()) {
             Toast.makeText(this, "Masukkan IP PC dulu", Toast.LENGTH_SHORT).show();
             return;
         }
-        netExec.execute(() -> {
+
+        // Tampilkan indikator sedang menghubungkan
+        statusText.setText("⏳ Menghubungkan ke " + ip + "...");
+        connectBtn.setText("Connecting...");
+        connectBtn.setEnabled(false);
+
+        new Thread(() -> {
             try {
-                socket = new Socket();
-                socket.connect(new InetSocketAddress(ip, 27020), 3000);
-                socket.setTcpNoDelay(true);
+                Socket newSocket = new Socket();
+                newSocket.connect(new InetSocketAddress(ip, 27020), 3000);
+                newSocket.setTcpNoDelay(true);
+                
+                socket = newSocket;
                 output = socket.getOutputStream();
                 connected.set(true);
+                
                 uiHandler.post(() -> {
                     statusText.setText("✅ Terhubung ke " + ip);
                     connectBtn.setText("Disconnect");
+                    connectBtn.setEnabled(true);
                 });
             } catch (IOException ex) {
+                final String errMsg = ex.getMessage() != null ? ex.getMessage() : ex.toString();
                 uiHandler.post(() -> {
-                    statusText.setText("❌ Gagal: " + ex.getMessage());
-                    Toast.makeText(this, "Gagal connect: " + ex.getMessage(),
+                    statusText.setText("❌ Gagal: " + errMsg);
+                    connectBtn.setText("Connect");
+                    connectBtn.setEnabled(true);
+                    Toast.makeText(MainActivity.this, "Gagal connect: " + errMsg,
                             Toast.LENGTH_LONG).show();
                 });
             }
-        });
+        }).start();
     }
 
     private void disconnect() {
@@ -195,13 +208,15 @@ public class MainActivity extends AppCompatActivity {
         runOnUiThread(() -> {
             statusText.setText("Terputus");
             connectBtn.setText("Connect");
+            connectBtn.setEnabled(true);
         });
     }
 
+    // --- PERBAIKAN: Gunakan Thread baru untuk looping pengiriman data ---
     private void startSendLoop() {
-        netExec.execute(() -> {
+        new Thread(() -> {
             while (!Thread.interrupted()) {
-                if (connected.get() && output != null) {
+                if (connected.get()) {
                     try {
                         sendPacket();
                     } catch (IOException ex) {
@@ -211,10 +226,13 @@ public class MainActivity extends AppCompatActivity {
                 try { Thread.sleep(SEND_INTERVAL_MS); }
                 catch (InterruptedException e) { return; }
             }
-        });
+        }).start();
     }
 
     private void sendPacket() throws IOException {
+        OutputStream out = this.output;
+        if (out == null) return;
+        
         byte[] p = new byte[PACKET_SIZE];
         p[0] = SYNC;
         p[1] = (byte)(buttons & 0xFF);
@@ -226,17 +244,16 @@ public class MainActivity extends AppCompatActivity {
         p[7] = (byte) l2;
         p[8] = (byte) r2;
         p[9] = (byte) dpad;
-        p[10] = 0; // reserved
+        p[10] = 0;
         byte ck = 0;
         for (int i = 1; i < PACKET_SIZE - 1; i++) ck ^= p[i];
         p[PACKET_SIZE - 1] = ck;
-        output.write(p);
+        out.write(p);
     }
 
     @Override
     protected void onDestroy() {
         super.onDestroy();
         disconnect();
-        netExec.shutdownNow();
     }
 }
