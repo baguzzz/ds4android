@@ -1,18 +1,21 @@
 <?xml version="1.0" encoding="utf-8"?>
-<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<androidx.constraintlayout.widget.ConstraintLayout 
+    xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:background="#0F1115">
 
-    <!-- Status bar atas -->
+    <!-- ================= TOP BAR ================= -->
     <LinearLayout
         android:id="@+id/topBar"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:padding="6dp"
+        android:padding="8dp"
         android:background="#1A1D24"
-        android:gravity="center_vertical">
+        android:gravity="center_vertical"
+        app:layout_constraintTop_toTopOf="parent">
 
         <TextView
             android:id="@+id/status"
@@ -41,117 +44,163 @@
             android:layout_height="40dp"
             android:text="Connect"
             android:textSize="11sp"
-            android:layout_marginStart="6dp"/>
+            android:layout_marginStart="8dp"/>
     </LinearLayout>
 
-    <!-- LEFT STICK -->
+    <!-- ================= LEFT SIDE (D-PAD & LEFT STICK) ================= -->
+    
+    <!-- Left Stick -->
     <com.example.ds4remote.JoystickView
         android:id="@+id/leftStick"
-        android:layout_width="180dp"
-        android:layout_height="180dp"
-        android:layout_gravity="bottom|start"
-        android:layout_margin="20dp"/>
+        android:layout_width="160dp"
+        android:layout_height="160dp"
+        android:layout_marginStart="24dp"
+        android:layout_marginBottom="24dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"/>
 
-    <!-- RIGHT STICK -->
-    <com.example.ds4remote.JoystickView
-        android:id="@+id/rightStick"
-        android:layout_width="180dp"
-        android:layout_height="180dp"
-        android:layout_gravity="bottom|end"
-        android:layout_margin="20dp"/>
-
-    <!-- D-PAD -->
+    <!-- D-Pad (di atas Left Stick) -->
     <LinearLayout
+        android:id="@+id/dpadContainer"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:orientation="vertical"
-        android:layout_gravity="top|start"
-        android:layout_marginTop="70dp"
-        android:layout_marginStart="20dp">
+        android:layout_marginBottom="16dp"
+        app:layout_constraintBottom_toTopOf="@+id/leftStick"
+        app:layout_constraintStart_toStartOf="@+id/leftStick"
+        app:layout_constraintEnd_toEndOf="@+id/leftStick">
 
         <Button android:id="@+id/dpadUp" android:text="▲"
-            android:layout_width="56dp" android:layout_height="56dp"
-            android:layout_gravity="center_horizontal"/>
+            android:layout_width="50dp" android:layout_height="50dp"
+            android:layout_gravity="center_horizontal"
+            android:padding="0dp" android:textSize="16sp"/>
 
         <LinearLayout
             android:layout_width="wrap_content" android:layout_height="wrap_content"
             android:orientation="horizontal">
             <Button android:id="@+id/dpadLeft" android:text="◀"
-                android:layout_width="56dp" android:layout_height="56dp"/>
+                android:layout_width="50dp" android:layout_height="50dp"
+                android:padding="0dp" android:textSize="16sp"/>
             <View android:id="@+id/dpadCenter"
-                android:layout_width="56dp" android:layout_height="56dp"/>
+                android:layout_width="50dp" android:layout_height="50dp"/>
             <Button android:id="@+id/dpadRight" android:text="▶"
-                android:layout_width="56dp" android:layout_height="56dp"/>
+                android:layout_width="50dp" android:layout_height="50dp"
+                android:padding="0dp" android:textSize="16sp"/>
         </LinearLayout>
 
         <Button android:id="@+id/dpadDown" android:text="▼"
-            android:layout_width="56dp" android:layout_height="56dp"
-            android:layout_gravity="center_horizontal"/>
+            android:layout_width="50dp" android:layout_height="50dp"
+            android:layout_gravity="center_horizontal"
+            android:padding="0dp" android:textSize="16sp"/>
     </LinearLayout>
 
-    <!-- FACE BUTTONS -->
-    <FrameLayout
-        android:layout_width="200dp"
-        android:layout_height="200dp"
-        android:layout_gravity="top|end"
-        android:layout_marginTop="70dp"
-        android:layout_marginEnd="20dp">
+    <!-- ================= RIGHT SIDE (FACE BUTTONS & RIGHT STICK) ================= -->
+
+    <!-- Right Stick -->
+    <com.example.ds4remote.JoystickView
+        android:id="@+id/rightStick"
+        android:layout_width="160dp"
+        android:layout_height="160dp"
+        android:layout_marginEnd="24dp"
+        android:layout_marginBottom="24dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintEnd_toEndOf="parent"/>
+
+    <!-- Face Buttons (di atas Right Stick) -->
+    <androidx.constraintlayout.widget.ConstraintLayout
+        android:id="@+id/faceButtons"
+        android:layout_width="160dp"
+        android:layout_height="160dp"
+        android:layout_marginBottom="16dp"
+        app:layout_constraintBottom_toTopOf="@+id/rightStick"
+        app:layout_constraintEnd_toEndOf="@+id/rightStick"
+        app:layout_constraintStart_toStartOf="@+id/rightStick">
 
         <Button android:id="@+id/btnY" android:text="△"
-            android:layout_width="56dp" android:layout_height="56dp"
-            android:layout_gravity="top|center_horizontal"/>
+            android:layout_width="50dp" android:layout_height="50dp"
+            android:padding="0dp" android:textSize="16sp"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"/>
 
         <Button android:id="@+id/btnX" android:text="□"
-            android:layout_width="56dp" android:layout_height="56dp"
-            android:layout_gravity="center_vertical|start"/>
+            android:layout_width="50dp" android:layout_height="50dp"
+            android:padding="0dp" android:textSize="16sp"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"/>
 
         <Button android:id="@+id/btnB" android:text="○"
-            android:layout_width="56dp" android:layout_height="56dp"
-            android:layout_gravity="center_vertical|end"/>
+            android:layout_width="50dp" android:layout_height="50dp"
+            android:padding="0dp" android:textSize="16sp"
+            app:layout_constraintTop_toTopOf="parent"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"/>
 
         <Button android:id="@+id/btnA" android:text="✕"
-            android:layout_width="56dp" android:layout_height="56dp"
-            android:layout_gravity="bottom|center_horizontal"/>
-    </FrameLayout>
+            android:layout_width="50dp" android:layout_height="50dp"
+            android:padding="0dp" android:textSize="16sp"
+            app:layout_constraintBottom_toBottomOf="parent"
+            app:layout_constraintStart_toStartOf="parent"
+            app:layout_constraintEnd_toEndOf="parent"/>
+    </androidx.constraintlayout.widget.ConstraintLayout>
 
-    <!-- SHOULDER + CENTER -->
+
+    <!-- ================= TOP ROW (L1, SHARE, PS, OPTIONS, R1) ================= -->
+    
     <LinearLayout
+        android:id="@+id/topRow"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:layout_gravity="top|center_horizontal"
-        android:layout_marginTop="70dp">
+        android:layout_marginTop="60dp"
+        app:layout_constraintTop_toTopOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
 
         <Button android:id="@+id/btnL1" android:text="L1"
-            android:layout_width="wrap_content" android:layout_height="40dp"/>
+            android:layout_width="60dp" android:layout_height="40dp" android:padding="0dp"/>
+
         <Button android:id="@+id/btnShare" android:text="Share"
-            android:layout_width="wrap_content" android:layout_height="40dp"/>
+            android:layout_width="60dp" android:layout_height="40dp" android:padding="0dp" android:textSize="10sp"/>
+
         <Button android:id="@+id/btnPS" android:text="PS"
-            android:layout_width="wrap_content" android:layout_height="40dp"/>
+            android:layout_width="60dp" android:layout_height="40dp" android:padding="0dp"/>
+
         <Button android:id="@+id/btnOptions" android:text="Options"
-            android:layout_width="wrap_content" android:layout_height="40dp"/>
+            android:layout_width="60dp" android:layout_height="40dp" android:padding="0dp" android:textSize="10sp"/>
+
         <Button android:id="@+id/btnR1" android:text="R1"
-            android:layout_width="wrap_content" android:layout_height="40dp"/>
+            android:layout_width="60dp" android:layout_height="40dp" android:padding="0dp"/>
     </LinearLayout>
 
-    <!-- TRIGGER + STICK CLICK + TOUCHPAD -->
+
+    <!-- ================= BOTTOM ROW (L2, L3, TOUCHPAD, R3, R2) ================= -->
+    
     <LinearLayout
+        android:id="@+id/bottomRow"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:orientation="horizontal"
-        android:layout_gravity="bottom|center_horizontal"
-        android:layout_margin="8dp">
+        android:layout_marginBottom="16dp"
+        app:layout_constraintBottom_toBottomOf="parent"
+        app:layout_constraintStart_toStartOf="parent"
+        app:layout_constraintEnd_toEndOf="parent">
 
         <Button android:id="@+id/btnL2" android:text="L2"
-            android:layout_width="wrap_content" android:layout_height="40dp"/>
+            android:layout_width="70dp" android:layout_height="40dp" android:padding="0dp"/>
+
         <Button android:id="@+id/btnL3" android:text="L3"
-            android:layout_width="wrap_content" android:layout_height="40dp"/>
+            android:layout_width="70dp" android:layout_height="40dp" android:padding="0dp"/>
+
         <Button android:id="@+id/btnTouchpad" android:text="Touchpad"
-            android:layout_width="wrap_content" android:layout_height="40dp"/>
+            android:layout_width="100dp" android:layout_height="40dp" android:padding="0dp" android:textSize="10sp"/>
+
         <Button android:id="@+id/btnR3" android:text="R3"
-            android:layout_width="wrap_content" android:layout_height="40dp"/>
+            android:layout_width="70dp" android:layout_height="40dp" android:padding="0dp"/>
+
         <Button android:id="@+id/btnR2" android:text="R2"
-            android:layout_width="wrap_content" android:layout_height="40dp"/>
+            android:layout_width="70dp" android:layout_height="40dp" android:padding="0dp"/>
     </LinearLayout>
 
-</FrameLayout>
+</androidx.constraintlayout.widget.ConstraintLayout>
