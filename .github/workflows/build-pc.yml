@@ -1,0 +1,35 @@
+name: Build PC Server
+
+on:
+  push:
+    branches: [ main, master ]
+    paths:
+      - 'pc/**'
+      - '.github/workflows/build-pc.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup .NET 8
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      - name: Restore
+        working-directory: pc/Ds4Server
+        run: dotnet restore
+
+      - name: Publish
+        working-directory: pc/Ds4Server
+        run: dotnet publish -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true
+
+      - name: Upload PC Server
+        uses: actions/upload-artifact@v4
+        with:
+          name: Ds4Server-win-x64
+          path: pc/Ds4Server/bin/Release/net8.0-windows/win-x64/publish/Ds4Server.exe
+          retention-days: 30

@@ -1,0 +1,157 @@
+<?xml version="1.0" encoding="utf-8"?>
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#0F1115">
+
+    <!-- Status bar atas -->
+    <LinearLayout
+        android:id="@+id/topBar"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:padding="6dp"
+        android:background="#1A1D24"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/status"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:textColor="#4FC3F7"
+            android:textSize="12sp"
+            android:text="Belum terhubung"/>
+
+        <EditText
+            android:id="@+id/ipInput"
+            android:layout_width="140dp"
+            android:layout_height="wrap_content"
+            android:hint="192.168.1.10"
+            android:textColorHint="#666"
+            android:textColor="#FFF"
+            android:textSize="12sp"
+            android:inputType="text"
+            android:background="#0D1017"
+            android:padding="6dp"/>
+
+        <Button
+            android:id="@+id/connectBtn"
+            android:layout_width="wrap_content"
+            android:layout_height="40dp"
+            android:text="Connect"
+            android:textSize="11sp"
+            android:layout_marginStart="6dp"/>
+    </LinearLayout>
+
+    <!-- LEFT STICK -->
+    <com.example.ds4remote.JoystickView
+        android:id="@+id/leftStick"
+        android:layout_width="180dp"
+        android:layout_height="180dp"
+        android:layout_gravity="bottom|start"
+        android:layout_margin="20dp"/>
+
+    <!-- RIGHT STICK -->
+    <com.example.ds4remote.JoystickView
+        android:id="@+id/rightStick"
+        android:layout_width="180dp"
+        android:layout_height="180dp"
+        android:layout_gravity="bottom|end"
+        android:layout_margin="20dp"/>
+
+    <!-- D-PAD -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:layout_gravity="top|start"
+        android:layout_marginTop="70dp"
+        android:layout_marginStart="20dp">
+
+        <Button android:id="@+id/dpadUp" android:text="▲"
+            android:layout_width="56dp" android:layout_height="56dp"
+            android:layout_gravity="center_horizontal"/>
+
+        <LinearLayout
+            android:layout_width="wrap_content" android:layout_height="wrap_content"
+            android:orientation="horizontal">
+            <Button android:id="@+id/dpadLeft" android:text="◀"
+                android:layout_width="56dp" android:layout_height="56dp"/>
+            <View android:id="@+id/dpadCenter"
+                android:layout_width="56dp" android:layout_height="56dp"/>
+            <Button android:id="@+id/dpadRight" android:text="▶"
+                android:layout_width="56dp" android:layout_height="56dp"/>
+        </LinearLayout>
+
+        <Button android:id="@+id/dpadDown" android:text="▼"
+            android:layout_width="56dp" android:layout_height="56dp"
+            android:layout_gravity="center_horizontal"/>
+    </LinearLayout>
+
+    <!-- FACE BUTTONS -->
+    <FrameLayout
+        android:layout_width="200dp"
+        android:layout_height="200dp"
+        android:layout_gravity="top|end"
+        android:layout_marginTop="70dp"
+        android:layout_marginEnd="20dp">
+
+        <Button android:id="@+id/btnY" android:text="△"
+            android:layout_width="56dp" android:layout_height="56dp"
+            android:layout_gravity="top|center_horizontal"/>
+
+        <Button android:id="@+id/btnX" android:text="□"
+            android:layout_width="56dp" android:layout_height="56dp"
+            android:layout_gravity="center_vertical|start"/>
+
+        <Button android:id="@+id/btnB" android:text="○"
+            android:layout_width="56dp" android:layout_height="56dp"
+            android:layout_gravity="center_vertical|end"/>
+
+        <Button android:id="@+id/btnA" android:text="✕"
+            android:layout_width="56dp" android:layout_height="56dp"
+            android:layout_gravity="bottom|center_horizontal"/>
+    </FrameLayout>
+
+    <!-- SHOULDER + CENTER -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_gravity="top|center_horizontal"
+        android:layout_marginTop="70dp">
+
+        <Button android:id="@+id/btnL1" android:text="L1"
+            android:layout_width="wrap_content" android:layout_height="40dp"/>
+        <Button android:id="@+id/btnShare" android:text="Share"
+            android:layout_width="wrap_content" android:layout_height="40dp"/>
+        <Button android:id="@+id/btnPS" android:text="PS"
+            android:layout_width="wrap_content" android:layout_height="40dp"/>
+        <Button android:id="@+id/btnOptions" android:text="Options"
+            android:layout_width="wrap_content" android:layout_height="40dp"/>
+        <Button android:id="@+id/btnR1" android:text="R1"
+            android:layout_width="wrap_content" android:layout_height="40dp"/>
+    </LinearLayout>
+
+    <!-- TRIGGER + STICK CLICK + TOUCHPAD -->
+    <LinearLayout
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:layout_gravity="bottom|center_horizontal"
+        android:layout_margin="8dp">
+
+        <Button android:id="@+id/btnL2" android:text="L2"
+            android:layout_width="wrap_content" android:layout_height="40dp"/>
+        <Button android:id="@+id/btnL3" android:text="L3"
+            android:layout_width="wrap_content" android:layout_height="40dp"/>
+        <Button android:id="@+id/btnTouchpad" android:text="Touchpad"
+            android:layout_width="wrap_content" android:layout_height="40dp"/>
+        <Button android:id="@+id/btnR3" android:text="R3"
+            android:layout_width="wrap_content" android:layout_height="40dp"/>
+        <Button android:id="@+id/btnR2" android:text="R2"
+            android:layout_width="wrap_content" android:layout_height="40dp"/>
+    </LinearLayout>
+
+</FrameLayout>
