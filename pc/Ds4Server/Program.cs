@@ -93,8 +93,8 @@ void PushToDs4()
     ds4.SetButtonState(DualShock4Button.Options,  options);
     ds4.SetButtonState(DualShock4Button.ThumbLeft,  l3);
     ds4.SetButtonState(DualShock4Button.ThumbRight, r3);
-    ds4.SetButtonState(DualShock4Button.Ps,       ps);
-    ds4.SetButtonState(DualShock4Button.Touchpad, touchpad);
+    ds4.SetButtonState(DualShock4SpecialButton.Ps, ps);
+    ds4.SetButtonState(DualShock4SpecialButton.Touchpad, touchpad);
 
     ds4.SetDPadDirection(
         DPadUp() && DPadRight() ? DualShock4DPadDirection.Northeast :
@@ -105,7 +105,7 @@ void PushToDs4()
         DPadRight() ? DualShock4DPadDirection.East :
         DPadDown()  ? DualShock4DPadDirection.South :
         DPadLeft()  ? DualShock4DPadDirection.West :
-                      DualShock4DPadDirection.Neutral);
+                      DualShock4DPadDirection.None);
 
     ds4.SubmitReport();
 }
