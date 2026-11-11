@@ -12,6 +12,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.FrameLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
@@ -38,6 +39,7 @@ public class MainActivity extends AppCompatActivity {
     private TextView statusText;
     private EditText ipInput;
     private Button connectBtn, editLayoutBtn, resetLayoutBtn, exportLayoutBtn, importLayoutBtn;
+    private FrameLayout gamepadArea;
 
     private Socket socket;
     private OutputStream output;
@@ -65,7 +67,6 @@ public class MainActivity extends AppCompatActivity {
         R.id.btnL3, R.id.btnTouchpad, R.id.btnR3
     };
 
-    // Launcher untuk Export
     private final ActivityResultLauncher<Intent> exportLauncher = registerForActivityResult(
             new ActivityResultContracts.StartActivityForResult(),
             result -> {
@@ -75,7 +76,6 @@ public class MainActivity extends AppCompatActivity {
             }
     );
 
-    // Launcher untuk Import
     private final ActivityResultLauncher<String[]> importLauncher = registerForActivityResult(
             new ActivityResultContracts.OpenDocument(),
             uri -> {
@@ -99,6 +99,7 @@ public class MainActivity extends AppCompatActivity {
         resetLayoutBtn = findViewById(R.id.resetLayoutBtn);
         exportLayoutBtn = findViewById(R.id.exportLayoutBtn);
         importLayoutBtn = findViewById(R.id.importLayoutBtn);
+        gamepadArea = findViewById(R.id.gamepadArea);
 
         JoystickView leftStick = findViewById(R.id.leftStick);
         JoystickView rightStick = findViewById(R.id.rightStick);
@@ -138,7 +139,6 @@ public class MainActivity extends AppCompatActivity {
         setupDpad(R.id.dpadDown, 4);
         setupDpad(R.id.dpadLeft, 6);
 
-        // --- Tombol Toggle Edit Mode ---
         editLayoutBtn.setOnClickListener(v -> {
             isEditMode = !isEditMode;
             if (isEditMode) {
@@ -147,8 +147,7 @@ public class MainActivity extends AppCompatActivity {
                 resetLayoutBtn.setVisibility(View.VISIBLE);
                 exportLayoutBtn.setVisibility(View.VISIBLE);
                 importLayoutBtn.setVisibility(View.VISIBLE);
-                statusText.setText("MODE EDIT: Geser tombol sesuka hati");
-                Toast.makeText(this, "Mode Edit Aktif", Toast.LENGTH_SHORT).show();
+                statusText.setText("MODE EDIT: Geser tombol");
             } else {
                 editLayoutBtn.setText("⚙️ Edit");
                 editLayoutBtn.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xFFFF9800));
@@ -160,13 +159,11 @@ public class MainActivity extends AppCompatActivity {
             }
         });
 
-        // --- Tombol Reset ---
         resetLayoutBtn.setOnClickListener(v -> {
-            Toast.makeText(this, "Mengembalikan ke tata letak bawaan...", Toast.LENGTH_SHORT).show();
+            Toast.makeText(this, "Reset tata letak...", Toast.LENGTH_SHORT).show();
             resetLayout();
         });
 
-        // --- Tombol Export ---
         exportLayoutBtn.setOnClickListener(v -> {
             Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
             intent.addCategory(Intent.CATEGORY_OPENABLE);
@@ -175,9 +172,7 @@ public class MainActivity extends AppCompatActivity {
             exportLauncher.launch(intent);
         });
 
-        // --- Tombol Import ---
         importLayoutBtn.setOnClickListener(v -> {
-            // Membuka file picker untuk mencari file .json
             importLauncher.launch(new String[]{"application/json", "text/plain", "*/*"});
         });
 
@@ -193,7 +188,7 @@ public class MainActivity extends AppCompatActivity {
     // ================= LAYOUT EDITOR & CONFIG =================
 
     private void loadLayout() {
-        boolean loadedFromPrefs = false;
+        boolean loaded = false;
         for (int id : allIds) {
             View child = findViewById(id);
             if (child != null) {
@@ -205,12 +200,11 @@ public class MainActivity extends AppCompatActivity {
                     params.width = prefs.getInt(idName + "_w", params.width);
                     params.height = prefs.getInt(idName + "_h", params.height);
                     child.setLayoutParams(params);
-                    loadedFromPrefs = true;
+                    loaded = true;
                 }
             }
         }
-
-        if (!loadedFromPrefs) {
+        if (!loaded) {
             loadDefaultFromJson();
         }
     }
@@ -270,6 +264,14 @@ public class MainActivity extends AppCompatActivity {
 
     private void resetLayout() {
         prefs.edit().clear().apply();
+        // Kembalikan ke posisi semula dari XML (Margin)
+        for (int id : allIds) {
+            View child = findViewById(id);
+            if (child != null) {
+                child.setTranslationX(0f);
+                child.setTranslationY(0f);
+            }
+        }
         loadDefaultFromJson();
     }
 
@@ -327,7 +329,6 @@ public class MainActivity extends AppCompatActivity {
             is.close();
             String json = new String(buffer, StandardCharsets.UTF_8);
             
-            // Terapkan layout dan simpan ke SharedPreferences
             applyJsonLayout(json, true);
             Toast.makeText(this, "Import layout berhasil!", Toast.LENGTH_SHORT).show();
         } catch (Exception e) {
@@ -338,7 +339,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void applyEditAndGamepadTouch(View view, Runnable onPress, Runnable onRelease) {
         view.setOnTouchListener(new View.OnTouchListener() {
-            float startX, startY, initialTx, initialTy;
+            float startX, startY, initialX, initialY;
 
             @Override
             public boolean onTouch(View v, MotionEvent event) {
@@ -347,14 +348,25 @@ public class MainActivity extends AppCompatActivity {
                         case MotionEvent.ACTION_DOWN:
                             startX = event.getRawX();
                             startY = event.getRawY();
-                            initialTx = v.getX();
-                            initialTy = v.getY();
+                            initialX = v.getX();
+                            initialY = v.getY();
                             return true;
                         case MotionEvent.ACTION_MOVE:
                             float dx = event.getRawX() - startX;
                             float dy = event.getRawY() - startY;
-                            v.setX(initialTx + dx);
-                            v.setY(initialTy + dy);
+                            
+                            float newX = initialX + dx;
+                            float newY = initialY + dy;
+                            
+                            // === PEMBATAS LAYAR (CLAMPING) ===
+                            float maxX = gamepadArea.getWidth() - v.getWidth();
+                            float maxY = gamepadArea.getHeight() - v.getHeight();
+                            
+                            newX = Math.max(0, Math.min(newX, maxX));
+                            newY = Math.max(0, Math.min(newY, maxY));
+                            
+                            v.setX(newX);
+                            v.setY(newY);
                             return true;
                     }
                     return true;
@@ -376,7 +388,7 @@ public class MainActivity extends AppCompatActivity {
 
     private void applyEditTouchOnly(View view) {
         view.setOnTouchListener(new View.OnTouchListener() {
-            float startX, startY, initialTx, initialTy;
+            float startX, startY, initialX, initialY;
 
             @Override
             public boolean onTouch(View v, MotionEvent event) {
@@ -386,14 +398,25 @@ public class MainActivity extends AppCompatActivity {
                     case MotionEvent.ACTION_DOWN:
                         startX = event.getRawX();
                         startY = event.getRawY();
-                        initialTx = v.getX();
-                        initialTy = v.getY();
+                        initialX = v.getX();
+                        initialY = v.getY();
                         return true;
                     case MotionEvent.ACTION_MOVE:
                         float dx = event.getRawX() - startX;
                         float dy = event.getRawY() - startY;
-                        v.setX(initialTx + dx);
-                        v.setY(initialTy + dy);
+                        
+                        float newX = initialX + dx;
+                        float newY = initialY + dy;
+                        
+                        // === PEMBATAS LAYAR (CLAMPING) ===
+                        float maxX = gamepadArea.getWidth() - v.getWidth();
+                        float maxY = gamepadArea.getHeight() - v.getHeight();
+                        
+                        newX = Math.max(0, Math.min(newX, maxX));
+                        newY = Math.max(0, Math.min(newY, maxY));
+                        
+                        v.setX(newX);
+                        v.setY(newY);
                         return true;
                 }
                 return true;
