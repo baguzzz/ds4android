@@ -39,7 +39,6 @@ public class MainActivity extends AppCompatActivity {
     private final AtomicBoolean connected = new AtomicBoolean(false);
     private final Handler uiHandler = new Handler(Looper.getMainLooper());
 
-    // Mode Edit Layout
     private boolean isEditMode = false;
     private SharedPreferences prefs;
 
@@ -65,6 +64,7 @@ public class MainActivity extends AppCompatActivity {
         editLayoutBtn = findViewById(R.id.editLayoutBtn);
         gamepadArea = findViewById(R.id.gamepadArea);
 
+        // --- Setup Analog Sticks ---
         JoystickView leftStick = findViewById(R.id.leftStick);
         JoystickView rightStick = findViewById(R.id.rightStick);
 
@@ -78,8 +78,11 @@ public class MainActivity extends AppCompatActivity {
             rx = clamp255((x + 1f) / 2f * 255f);
             ry = clamp255((y + 1f) / 2f * 255f);
         });
+        
+        applyEditTouchOnly(leftStick);
+        applyEditTouchOnly(rightStick);
 
-        // Setup Button & Touch Listeners (Normal & Edit Mode)
+        // --- Setup Buttons & D-Pad ---
         setupButton(R.id.btnA, BTN_CROSS);
         setupButton(R.id.btnB, BTN_CIRCLE);
         setupButton(R.id.btnX, BTN_SQUARE);
@@ -101,13 +104,13 @@ public class MainActivity extends AppCompatActivity {
         setupDpad(R.id.dpadDown, 4);
         setupDpad(R.id.dpadLeft, 6);
 
-        // Tombol Toggle Edit Mode
+        // --- Tombol Toggle Edit Mode ---
         editLayoutBtn.setOnClickListener(v -> {
             isEditMode = !isEditMode;
             if (isEditMode) {
                 editLayoutBtn.setText("💾 Simpan");
                 editLayoutBtn.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xFF4CAF50));
-                statusText.setText("MODE EDIT: Geser tombol, Cubit (Pinch) untuk ubah ukuran");
+                statusText.setText("MODE EDIT: Geser tombol, Cubit untuk ubah ukuran");
                 Toast.makeText(this, "Mode Edit Aktif", Toast.LENGTH_SHORT).show();
             } else {
                 editLayoutBtn.setText("⚙️ Edit");
@@ -122,13 +125,14 @@ public class MainActivity extends AppCompatActivity {
             else connect(ipInput.getText().toString().trim());
         });
 
-        // Muat layout yang tersimpan saat aplikasi dibuka
         loadLayout();
         startSendLoop();
     }
 
-    // ================= LAYOUT EDITOR =================
-    private void applyEditTouch(View view) {
+    // ================= LAYOUT EDITOR LOGIC =================
+
+    // Listener gabungan untuk Button (Bisa untuk Edit Mode & Gamepad Mode)
+    private void applyEditAndGamepadTouch(View view, Runnable onPress, Runnable onRelease) {
         final ScaleGestureDetector scaleDetector = new ScaleGestureDetector(this, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
             @Override
             public boolean onScale(ScaleGestureDetector detector) {
@@ -143,13 +147,55 @@ public class MainActivity extends AppCompatActivity {
         });
 
         view.setOnTouchListener((v, event) -> {
-            scaleDetector.onTouchEvent(event);
-
-            if (!isEditMode) {
-                // Jika tidak dalam mode edit, teruskan event ke fungsi normal
-                return false; 
+            if (isEditMode) {
+                // Mode Edit: Geser & Resize
+                scaleDetector.onTouchEvent(event);
+                switch (event.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        return true;
+                    case MotionEvent.ACTION_MOVE:
+                        if (!scaleDetector.isInProgress()) {
+                            v.setX(v.getX() + event.getX() - (v.getWidth() / 2f));
+                            v.setY(v.getY() + event.getY() - (v.getHeight() / 2f));
+                        }
+                        return true;
+                }
+                return true;
+            } else {
+                // Mode Main: Kirim Sinyal Gamepad
+                switch (event.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        if (onPress != null) onPress.run();
+                        return true;
+                    case MotionEvent.ACTION_UP:
+                    case MotionEvent.ACTION_CANCEL:
+                        if (onRelease != null) onRelease.run();
+                        return true;
+                }
+                return false;
             }
+        });
+    }
 
+    // Listener khusus untuk Analog (Hanya merespon saat mode edit, saat mode main biarkan JoystickView yang bekerja)
+    private void applyEditTouchOnly(View view) {
+        final ScaleGestureDetector scaleDetector = new ScaleGestureDetector(this, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
+            @Override
+            public boolean onScale(ScaleGestureDetector detector) {
+                if (!isEditMode) return false;
+                float scale = detector.getScaleFactor();
+                ViewGroup.LayoutParams params = view.getLayoutParams();
+                params.width = (int) Math.max(40, params.width * scale);
+                params.height = (int) Math.max(40, params.height * scale);
+                view.setLayoutParams(params);
+                return true;
+            }
+        });
+
+        view.setOnTouchListener((v, event) -> {
+            if (!isEditMode) return false; // Biarkan JoystickView memproses sentuhan
+
+            scaleDetector.onTouchEvent(event);
             switch (event.getActionMasked()) {
                 case MotionEvent.ACTION_DOWN:
                     return true;
@@ -160,7 +206,7 @@ public class MainActivity extends AppCompatActivity {
                     }
                     return true;
             }
-            return false;
+            return true;
         });
     }
 
@@ -192,8 +238,6 @@ public class MainActivity extends AppCompatActivity {
                     params.height = prefs.getInt(idName + "_h", params.height);
                     child.setLayoutParams(params);
                 }
-                // Daftarkan fitur geser & cubit ke setiap tombol
-                applyEditTouch(child);
             }
         }
     }
@@ -205,41 +249,26 @@ public class MainActivity extends AppCompatActivity {
 
     private void setupButton(int id, int bitIdx) {
         Button b = findViewById(id);
-        b.setOnTouchListener((v, e) -> {
-            if (isEditMode) return false; // Biarkan mode edit yang mengambil alih
-            switch (e.getActionMasked()) {
-                case MotionEvent.ACTION_DOWN: buttons |= (1 << bitIdx); return true;
-                case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL: buttons &= ~(1 << bitIdx); return true;
-            }
-            return false;
-        });
+        applyEditAndGamepadTouch(b, 
+            () -> { if (!isEditMode) buttons |= (1 << bitIdx); },
+            () -> { if (!isEditMode) buttons &= ~(1 << bitIdx); }
+        );
     }
 
     private void setupTrigger(int id, boolean isL2) {
         Button b = findViewById(id);
-        b.setOnTouchListener((v, e) -> {
-            if (isEditMode) return false;
-            switch (e.getActionMasked()) {
-                case MotionEvent.ACTION_DOWN: if (isL2) l2 = 255; else r2 = 255; return true;
-                case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL: if (isL2) l2 = 0; else r2 = 0; return true;
-            }
-            return false;
-        });
+        applyEditAndGamepadTouch(b, 
+            () -> { if (!isEditMode) { if (isL2) l2 = 255; else r2 = 255; } },
+            () -> { if (!isEditMode) { if (isL2) l2 = 0; else r2 = 0; } }
+        );
     }
 
     private void setupDpad(int id, int dpadValue) {
         View b = findViewById(id);
-        b.setOnTouchListener((v, e) -> {
-            if (isEditMode) return false;
-            switch (e.getActionMasked()) {
-                case MotionEvent.ACTION_DOWN: dpad = dpadValue; return true;
-                case MotionEvent.ACTION_UP:
-                case MotionEvent.ACTION_CANCEL: dpad = 8; return true;
-            }
-            return false;
-        });
+        applyEditAndGamepadTouch(b, 
+            () -> { if (!isEditMode) dpad = dpadValue; },
+            () -> { if (!isEditMode) dpad = 8; }
+        );
     }
 
     // ================= NETWORKING (TCP) =================
