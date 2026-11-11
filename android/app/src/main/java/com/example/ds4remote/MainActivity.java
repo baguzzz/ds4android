@@ -1,26 +1,32 @@
 package com.example.ds4remote;
 
 import android.content.Context;
+import android.content.Intent;
 import android.content.SharedPreferences;
+import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
 import android.view.MotionEvent;
-import android.view.ScaleGestureDetector;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.Button;
 import android.widget.EditText;
-import android.widget.FrameLayout;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import androidx.activity.result.ActivityResultLauncher;
+import androidx.activity.result.contract.ActivityResultContracts;
 import androidx.appcompat.app.AppCompatActivity;
 
-import java.io.IOException;
+import org.json.JSONObject;
+
+import java.io.InputStream;
 import java.io.OutputStream;
+import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.Socket;
+import java.nio.charset.StandardCharsets;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 public class MainActivity extends AppCompatActivity {
@@ -31,8 +37,7 @@ public class MainActivity extends AppCompatActivity {
 
     private TextView statusText;
     private EditText ipInput;
-    private Button connectBtn, editLayoutBtn;
-    private FrameLayout gamepadArea;
+    private Button connectBtn, editLayoutBtn, resetLayoutBtn, exportLayoutBtn, importLayoutBtn;
 
     private Socket socket;
     private OutputStream output;
@@ -51,6 +56,35 @@ public class MainActivity extends AppCompatActivity {
     private static final int BTN_CROSS=0, BTN_CIRCLE=1, BTN_SQUARE=2, BTN_TRIANGLE=3, BTN_L1=4, BTN_R1=5,
             BTN_SHARE=6, BTN_OPTIONS=7, BTN_L3=8, BTN_R3=9, BTN_PS=10, BTN_TOUCHPAD=11;
 
+    private final int[] allIds = {
+        R.id.dpadUp, R.id.dpadDown, R.id.dpadLeft, R.id.dpadRight,
+        R.id.btnY, R.id.btnX, R.id.btnA, R.id.btnB,
+        R.id.btnL1, R.id.btnL2, R.id.btnR1, R.id.btnR2,
+        R.id.btnShare, R.id.btnPS, R.id.btnOptions,
+        R.id.leftStick, R.id.rightStick,
+        R.id.btnL3, R.id.btnTouchpad, R.id.btnR3
+    };
+
+    // Launcher untuk Export
+    private final ActivityResultLauncher<Intent> exportLauncher = registerForActivityResult(
+            new ActivityResultContracts.StartActivityForResult(),
+            result -> {
+                if (result.getResultCode() == RESULT_OK && result.getData() != null) {
+                    writeLayoutToUri(result.getData().getData());
+                }
+            }
+    );
+
+    // Launcher untuk Import
+    private final ActivityResultLauncher<String[]> importLauncher = registerForActivityResult(
+            new ActivityResultContracts.OpenDocument(),
+            uri -> {
+                if (uri != null) {
+                    readLayoutFromUri(uri);
+                }
+            }
+    );
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -62,9 +96,10 @@ public class MainActivity extends AppCompatActivity {
         ipInput = findViewById(R.id.ipInput);
         connectBtn = findViewById(R.id.connectBtn);
         editLayoutBtn = findViewById(R.id.editLayoutBtn);
-        gamepadArea = findViewById(R.id.gamepadArea);
+        resetLayoutBtn = findViewById(R.id.resetLayoutBtn);
+        exportLayoutBtn = findViewById(R.id.exportLayoutBtn);
+        importLayoutBtn = findViewById(R.id.importLayoutBtn);
 
-        // --- Setup Analog Sticks ---
         JoystickView leftStick = findViewById(R.id.leftStick);
         JoystickView rightStick = findViewById(R.id.rightStick);
 
@@ -78,11 +113,10 @@ public class MainActivity extends AppCompatActivity {
             rx = clamp255((x + 1f) / 2f * 255f);
             ry = clamp255((y + 1f) / 2f * 255f);
         });
-        
+
         applyEditTouchOnly(leftStick);
         applyEditTouchOnly(rightStick);
 
-        // --- Setup Buttons & D-Pad ---
         setupButton(R.id.btnA, BTN_CROSS);
         setupButton(R.id.btnB, BTN_CIRCLE);
         setupButton(R.id.btnX, BTN_SQUARE);
@@ -110,14 +144,41 @@ public class MainActivity extends AppCompatActivity {
             if (isEditMode) {
                 editLayoutBtn.setText("💾 Simpan");
                 editLayoutBtn.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xFF4CAF50));
-                statusText.setText("MODE EDIT: Geser tombol, Cubit untuk ubah ukuran");
+                resetLayoutBtn.setVisibility(View.VISIBLE);
+                exportLayoutBtn.setVisibility(View.VISIBLE);
+                importLayoutBtn.setVisibility(View.VISIBLE);
+                statusText.setText("MODE EDIT: Geser tombol sesuka hati");
                 Toast.makeText(this, "Mode Edit Aktif", Toast.LENGTH_SHORT).show();
             } else {
                 editLayoutBtn.setText("⚙️ Edit");
                 editLayoutBtn.setBackgroundTintList(android.content.res.ColorStateList.valueOf(0xFFFF9800));
+                resetLayoutBtn.setVisibility(View.GONE);
+                exportLayoutBtn.setVisibility(View.GONE);
+                importLayoutBtn.setVisibility(View.GONE);
                 statusText.setText("Tata letak disimpan!");
                 saveLayout();
             }
+        });
+
+        // --- Tombol Reset ---
+        resetLayoutBtn.setOnClickListener(v -> {
+            Toast.makeText(this, "Mengembalikan ke tata letak bawaan...", Toast.LENGTH_SHORT).show();
+            resetLayout();
+        });
+
+        // --- Tombol Export ---
+        exportLayoutBtn.setOnClickListener(v -> {
+            Intent intent = new Intent(Intent.ACTION_CREATE_DOCUMENT);
+            intent.addCategory(Intent.CATEGORY_OPENABLE);
+            intent.setType("application/json");
+            intent.putExtra(Intent.EXTRA_TITLE, "layout_default.json");
+            exportLauncher.launch(intent);
+        });
+
+        // --- Tombol Import ---
+        importLayoutBtn.setOnClickListener(v -> {
+            // Membuka file picker untuk mencari file .json
+            importLauncher.launch(new String[]{"application/json", "text/plain", "*/*"});
         });
 
         connectBtn.setOnClickListener(v -> {
@@ -129,93 +190,95 @@ public class MainActivity extends AppCompatActivity {
         startSendLoop();
     }
 
-    // ================= LAYOUT EDITOR LOGIC =================
+    // ================= LAYOUT EDITOR & CONFIG =================
 
-    // Listener gabungan untuk Button (Bisa untuk Edit Mode & Gamepad Mode)
-    private void applyEditAndGamepadTouch(View view, Runnable onPress, Runnable onRelease) {
-        final ScaleGestureDetector scaleDetector = new ScaleGestureDetector(this, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
-            @Override
-            public boolean onScale(ScaleGestureDetector detector) {
-                if (!isEditMode) return false;
-                float scale = detector.getScaleFactor();
-                ViewGroup.LayoutParams params = view.getLayoutParams();
-                params.width = (int) Math.max(40, params.width * scale);
-                params.height = (int) Math.max(40, params.height * scale);
-                view.setLayoutParams(params);
-                return true;
+    private void loadLayout() {
+        boolean loadedFromPrefs = false;
+        for (int id : allIds) {
+            View child = findViewById(id);
+            if (child != null) {
+                String idName = getResources().getResourceEntryName(id);
+                if (prefs.contains(idName + "_x")) {
+                    child.setX(prefs.getFloat(idName + "_x", 0f));
+                    child.setY(prefs.getFloat(idName + "_y", 0f));
+                    ViewGroup.LayoutParams params = child.getLayoutParams();
+                    params.width = prefs.getInt(idName + "_w", params.width);
+                    params.height = prefs.getInt(idName + "_h", params.height);
+                    child.setLayoutParams(params);
+                    loadedFromPrefs = true;
+                }
             }
-        });
+        }
 
-        view.setOnTouchListener((v, event) -> {
-            if (isEditMode) {
-                // Mode Edit: Geser & Resize
-                scaleDetector.onTouchEvent(event);
-                switch (event.getActionMasked()) {
-                    case MotionEvent.ACTION_DOWN:
-                        return true;
-                    case MotionEvent.ACTION_MOVE:
-                        if (!scaleDetector.isInProgress()) {
-                            v.setX(v.getX() + event.getX() - (v.getWidth() / 2f));
-                            v.setY(v.getY() + event.getY() - (v.getHeight() / 2f));
-                        }
-                        return true;
-                }
-                return true;
-            } else {
-                // Mode Main: Kirim Sinyal Gamepad
-                switch (event.getActionMasked()) {
-                    case MotionEvent.ACTION_DOWN:
-                        if (onPress != null) onPress.run();
-                        return true;
-                    case MotionEvent.ACTION_UP:
-                    case MotionEvent.ACTION_CANCEL:
-                        if (onRelease != null) onRelease.run();
-                        return true;
-                }
-                return false;
-            }
-        });
+        if (!loadedFromPrefs) {
+            loadDefaultFromJson();
+        }
     }
 
-    // Listener khusus untuk Analog (Hanya merespon saat mode edit, saat mode main biarkan JoystickView yang bekerja)
-    private void applyEditTouchOnly(View view) {
-        final ScaleGestureDetector scaleDetector = new ScaleGestureDetector(this, new ScaleGestureDetector.SimpleOnScaleGestureListener() {
-            @Override
-            public boolean onScale(ScaleGestureDetector detector) {
-                if (!isEditMode) return false;
-                float scale = detector.getScaleFactor();
-                ViewGroup.LayoutParams params = view.getLayoutParams();
-                params.width = (int) Math.max(40, params.width * scale);
-                params.height = (int) Math.max(40, params.height * scale);
-                view.setLayoutParams(params);
-                return true;
-            }
-        });
+    private void loadDefaultFromJson() {
+        try {
+            InputStream is = getAssets().open("layout_default.json");
+            int size = is.available();
+            byte[] buffer = new byte[size];
+            is.read(buffer);
+            is.close();
+            String json = new String(buffer, StandardCharsets.UTF_8);
+            applyJsonLayout(json, false);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
 
-        view.setOnTouchListener((v, event) -> {
-            if (!isEditMode) return false; // Biarkan JoystickView memproses sentuhan
+    private void applyJsonLayout(String json, boolean saveToPrefs) {
+        try {
+            JSONObject obj = new JSONObject(json);
+            float density = getResources().getDisplayMetrics().density;
+            SharedPreferences.Editor editor = prefs.edit();
 
-            scaleDetector.onTouchEvent(event);
-            switch (event.getActionMasked()) {
-                case MotionEvent.ACTION_DOWN:
-                    return true;
-                case MotionEvent.ACTION_MOVE:
-                    if (!scaleDetector.isInProgress()) {
-                        v.setX(v.getX() + event.getX() - (v.getWidth() / 2f));
-                        v.setY(v.getY() + event.getY() - (v.getHeight() / 2f));
+            for (int id : allIds) {
+                String idName = getResources().getResourceEntryName(id);
+                if (obj.has(idName)) {
+                    View child = findViewById(id);
+                    if (child != null) {
+                        JSONObject props = obj.getJSONObject(idName);
+                        float x = (float) props.getDouble("x") * density;
+                        float y = (float) props.getDouble("y") * density;
+                        int w = (int) (props.getInt("w") * density);
+                        int h = (int) (props.getInt("h") * density);
+
+                        child.setX(x);
+                        child.setY(y);
+                        ViewGroup.LayoutParams params = child.getLayoutParams();
+                        params.width = w;
+                        params.height = h;
+                        child.setLayoutParams(params);
+
+                        if (saveToPrefs) {
+                            editor.putFloat(idName + "_x", x);
+                            editor.putFloat(idName + "_y", y);
+                            editor.putInt(idName + "_w", w);
+                            editor.putInt(idName + "_h", h);
+                        }
                     }
-                    return true;
+                }
             }
-            return true;
-        });
+            if (saveToPrefs) editor.apply();
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    private void resetLayout() {
+        prefs.edit().clear().apply();
+        loadDefaultFromJson();
     }
 
     private void saveLayout() {
         SharedPreferences.Editor editor = prefs.edit();
-        for (int i = 0; i < gamepadArea.getChildCount(); i++) {
-            View child = gamepadArea.getChildAt(i);
-            if (child.getId() != View.NO_ID) {
-                String idName = getResources().getResourceEntryName(child.getId());
+        for (int id : allIds) {
+            View child = findViewById(id);
+            if (child != null) {
+                String idName = getResources().getResourceEntryName(id);
                 editor.putFloat(idName + "_x", child.getX());
                 editor.putFloat(idName + "_y", child.getY());
                 editor.putInt(idName + "_w", child.getWidth());
@@ -225,21 +288,117 @@ public class MainActivity extends AppCompatActivity {
         editor.apply();
     }
 
-    private void loadLayout() {
-        for (int i = 0; i < gamepadArea.getChildCount(); i++) {
-            View child = gamepadArea.getChildAt(i);
-            if (child.getId() != View.NO_ID) {
-                String idName = getResources().getResourceEntryName(child.getId());
-                if (prefs.contains(idName + "_x")) {
-                    child.setX(prefs.getFloat(idName + "_x", 0));
-                    child.setY(prefs.getFloat(idName + "_y", 0));
-                    ViewGroup.LayoutParams params = child.getLayoutParams();
-                    params.width = prefs.getInt(idName + "_w", params.width);
-                    params.height = prefs.getInt(idName + "_h", params.height);
-                    child.setLayoutParams(params);
+    private void writeLayoutToUri(Uri uri) {
+        try {
+            JSONObject obj = new JSONObject();
+            float density = getResources().getDisplayMetrics().density;
+
+            for (int id : allIds) {
+                View child = findViewById(id);
+                if (child != null) {
+                    String idName = getResources().getResourceEntryName(id);
+                    JSONObject props = new JSONObject();
+                    props.put("x", Math.round(child.getX() / density));
+                    props.put("y", Math.round(child.getY() / density));
+                    props.put("w", Math.round(child.getWidth() / density));
+                    props.put("h", Math.round(child.getHeight() / density));
+                    obj.put(idName, props);
                 }
             }
+
+            OutputStream os = getContentResolver().openOutputStream(uri);
+            if (os != null) {
+                os.write(obj.toString(4).getBytes(StandardCharsets.UTF_8));
+                os.close();
+                Toast.makeText(this, "Export berhasil!", Toast.LENGTH_LONG).show();
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+            Toast.makeText(this, "Gagal export: " + e.getMessage(), Toast.LENGTH_LONG).show();
         }
+    }
+
+    private void readLayoutFromUri(Uri uri) {
+        try {
+            InputStream is = getContentResolver().openInputStream(uri);
+            int size = is.available();
+            byte[] buffer = new byte[size];
+            is.read(buffer);
+            is.close();
+            String json = new String(buffer, StandardCharsets.UTF_8);
+            
+            // Terapkan layout dan simpan ke SharedPreferences
+            applyJsonLayout(json, true);
+            Toast.makeText(this, "Import layout berhasil!", Toast.LENGTH_SHORT).show();
+        } catch (Exception e) {
+            e.printStackTrace();
+            Toast.makeText(this, "Gagal import: " + e.getMessage(), Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void applyEditAndGamepadTouch(View view, Runnable onPress, Runnable onRelease) {
+        view.setOnTouchListener(new View.OnTouchListener() {
+            float startX, startY, initialTx, initialTy;
+
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                if (isEditMode) {
+                    switch (event.getActionMasked()) {
+                        case MotionEvent.ACTION_DOWN:
+                            startX = event.getRawX();
+                            startY = event.getRawY();
+                            initialTx = v.getX();
+                            initialTy = v.getY();
+                            return true;
+                        case MotionEvent.ACTION_MOVE:
+                            float dx = event.getRawX() - startX;
+                            float dy = event.getRawY() - startY;
+                            v.setX(initialTx + dx);
+                            v.setY(initialTy + dy);
+                            return true;
+                    }
+                    return true;
+                } else {
+                    switch (event.getActionMasked()) {
+                        case MotionEvent.ACTION_DOWN:
+                            if (onPress != null) onPress.run();
+                            return true;
+                        case MotionEvent.ACTION_UP:
+                        case MotionEvent.ACTION_CANCEL:
+                            if (onRelease != null) onRelease.run();
+                            return true;
+                    }
+                    return false;
+                }
+            }
+        });
+    }
+
+    private void applyEditTouchOnly(View view) {
+        view.setOnTouchListener(new View.OnTouchListener() {
+            float startX, startY, initialTx, initialTy;
+
+            @Override
+            public boolean onTouch(View v, MotionEvent event) {
+                if (!isEditMode) return false;
+
+                switch (event.getActionMasked()) {
+                    case MotionEvent.ACTION_DOWN:
+                        startX = event.getRawX();
+                        startY = event.getRawY();
+                        initialTx = v.getX();
+                        initialTy = v.getY();
+                        return true;
+                    case MotionEvent.ACTION_MOVE:
+                        float dx = event.getRawX() - startX;
+                        float dy = event.getRawY() - startY;
+                        v.setX(initialTx + dx);
+                        v.setY(initialTy + dy);
+                        return true;
+                }
+                return true;
+            }
+        });
     }
 
     // ================= INPUT HANDLERS =================
@@ -271,7 +430,7 @@ public class MainActivity extends AppCompatActivity {
         );
     }
 
-    // ================= NETWORKING (TCP) =================
+    // ================= NETWORKING =================
     private void connect(String ip) {
         if (ip.isEmpty()) { Toast.makeText(this, "Masukkan IP PC", Toast.LENGTH_SHORT).show(); return; }
         statusText.setText("⏳ Menghubungkan...");
